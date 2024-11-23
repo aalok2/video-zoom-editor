@@ -99,10 +99,16 @@ const PreviewScreen = () => {
   const [videoUrl, setVideoUrl] = useState("");
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0); // Left pointer time
-  const [endTime, setEndTime] = useState(10); // Right pointer time
+  const [endTime, setEndTime] = useState(100); // Right pointer time
   const [isPlaying, setIsPlaying] = useState(false);
   const videoRef = useRef(null);
   const playerRef = useRef(null);
+
+  const endTimeRef = useRef(endTime);
+
+useEffect(() => {
+  endTimeRef.current = endTime;
+}, [endTime]);
 
   useEffect(() => {
     const fetchVideo = async () => {
@@ -120,52 +126,96 @@ const PreviewScreen = () => {
     fetchVideo();
   }, []);
 
-  useEffect(() => {
-    if (videoUrl && !playerRef.current) {
-      playerRef.current = videojs(videoRef.current, {
-        controls: true,
-        preload: "auto",
-        width: 640,
-        height: 360,
-      });
-      playerRef.current.on("loadedmetadata", () => {
-        setDuration(playerRef.current.duration());
-        setEndTime(playerRef.current.duration()); // Initialize end time
-      });
-      playerRef.current.on("timeupdate", () => {
-        setCurrentTime(playerRef.current.currentTime());
-      });
-    }
-  }, [videoUrl]);
+useEffect(() => {
 
-  const handleDragLeft = (e, data) => {
-    const newTime = Math.min((data.x / 700) * duration, endTime); // Prevent crossing the right pointer
-    setCurrentTime(newTime);
-    if (playerRef.current) {
-      playerRef.current.currentTime(newTime);
-    }
+  // Update the ref whenever endTime change
+  if (videoUrl && !playerRef.current) {
+    playerRef.current = videojs(videoRef.current, {
+      controls: true,
+      preload: "auto",
+      width: 640,
+      height: 360,
+    });
+    
+    playerRef.current.on("loadedmetadata", () => {
+         console.log("starttime" , endTime)
+      setDuration(playerRef.current.duration());
+      // console.log("345" , endTime)
+      setEndTime(playerRef.current.duration()); // Initialize end time
+      //  console.log("346" , endTime)
+    });
+    console.log("main end time" , playerRef)
+    // playerRef.current.on("timeupdate", () => {
+    //   console.log("endtime" , endTimeRef)
+    //   if(currentTime <= endTimeRef) {
+    //   setCurrentTime(playerRef.current.currentTime());
+    //   }
 
-    // Check if the pointers meet
-    if (newTime >= endTime - 0.1) {
-      setIsPlaying(false);
-      playerRef.current.pause();
-    }
-  };
+    // });
+    playerRef.current.on("timeupdate", () => {
+      const current = playerRef.current.currentTime();
 
-  const handleDragRight = (e, data) => {
-    const newEndTime = Math.max((data.x / 700) * duration, currentTime); // Prevent crossing the left pointer
-    setEndTime(newEndTime);
+      // Use the latest value of endTime
+      if (current >= endTimeRef.current - 0.1) {
+        playerRef.current.pause();
+        setIsPlaying(false);
+        setCurrentTime(endTimeRef.current);
+      } else {
+        setCurrentTime(current);
+      }
+    });
+  }
+}, [videoUrl]);
 
-    // Check if the pointers meet
-    if (newEndTime <= currentTime + 0.1) {
-      setIsPlaying(false);
-      playerRef.current.pause();
-    }
-  };
+// const handleDragLeft = (e, data) => {
+//   const newTime = Math.min((data.x / 700) * duration, endTime); // Prevent crossing the right pointer
+//   setCurrentTime(newTime);
 
+//   console.log(playerRef.current);
+
+//   if (playerRef.current && newTime < endTime) {
+//     console.log('HIIIIIIIIII');
+//     playerRef.current.currentTime(newTime);
+//     console.log('react', playerRef.current.currentTime());
+//   }
+
+//   // Check if the pointers meet (within a small threshold)
+//   if (newTime >= endTime - 0.1) {
+//     setIsPlaying(false);
+//     playerRef.current.pause();
+//   }
+// };
+
+// const handleDragRight = (e, data) => {
+//   const newEndTime = Math.max((data.x / 700) * duration, currentTime); // Prevent crossing the left pointer
+//   setEndTime(newEndTime);
+
+//   // Check if the pointers meet (within a small threshold)
+//   if (newEndTime <= currentTime + 0.1) {
+//     setIsPlaying(false);
+//     playerRef.current.pause();
+//   }
+// };
+
+const handleDragLeft = (e, data) => {
+  const newTime = Math.min((data.x / 700) * duration, endTime - 0.1); // Left pointer can't cross the right pointer
+  if(newTime < endTime) 
+  {
+  setCurrentTime(newTime);
+  }
+  
+  if (playerRef.current) {
+    playerRef.current.currentTime(newTime);
+  }
+};
+
+const handleDragRight = (e, data) => {
+  const newEndTime = Math.max((data.x / 700) * duration, currentTime + 0.1); // Right pointer can't cross the left pointer
+  setEndTime(Math.floor(newEndTime));
+};
   const togglePlayPause = () => {
     if (playerRef.current) {
-      if (isPlaying) {
+  if (isPlaying) {
         playerRef.current.pause();
       } else {
         playerRef.current.play();
@@ -174,66 +224,65 @@ const PreviewScreen = () => {
     }
   };
 
-  return (
-    <Container>
-      <Title>Video Editor</Title>
-      <VideoContainer>
-        {videoUrl ? (
-          <video ref={videoRef} className="video-js vjs-default-skin" controls>
-            <source src={videoUrl} type="video/mp4" />
-            Your browser does not support the video tag.
-          </video>
-        ) : (
-          <p>Loading video...</p>
-        )}
+return (
+  <Container>
+    <Title>Video Editor</Title>
+    <VideoContainer>
+      {videoUrl ? (
+        <video ref={videoRef} className="video-js vjs-default-skin" controls>
+          <source src={videoUrl} type="video/mp4" />
+          Your browser does not support the video tag.
+        </video>
+      ) : (
+        <p>Loading video...</p>
+      )}
 
-        <TimelineContainer>
-          <StartTime>0s</StartTime>
-          <EndTime>{Math.floor(duration)}s</EndTime>
+      <TimelineContainer>
+        <StartTime>0s</StartTime>
+        <EndTime>{endTime}s</EndTime>
 
-                  <SelectedArea
-            style={{
-              left: `${(currentTime / duration) * 100}%`,
-              width: `${((endTime - currentTime) / duration) * 100}%`,
-            }}
-          />
+        <SelectedArea
+          style={{
+            left: `${(currentTime / duration) * 100}%`,
+            width: `${((endTime - currentTime) / duration) * 100}%`,
+          }}
+        />
 
-          {/* Left Pointer */}
-          <Draggable
-            axis="x"
-            bounds="parent"
-            position={{ x: (currentTime / duration) * 700, y: 0 }}
-            onDrag={handleDragLeft}
-          >
-            <Pointer>
-              <TimeDisplay>{Math.floor(currentTime)}s</TimeDisplay>
-            </Pointer>
-          </Draggable>
+        {/* Left Pointer */}
+        <Draggable
+          axis="x"
+          bounds={{ left: 0, right: (endTime / duration) * 700 }} // Left pointer can only go up to right pointer position
+          position={{ x: (currentTime / duration) * 700, y: 0 }}
+          onDrag={handleDragLeft}
+        >
+          <Pointer>
+            <TimeDisplay>{Math.floor(currentTime)}s</TimeDisplay>
+          </Pointer>
+        </Draggable>
 
-          {/* Right Pointer */}
-          <Draggable
-            axis="x"
-            bounds="parent"
-            position={{ x: (endTime / duration) * 700, y: 0 }}
-            onDrag={handleDragRight}
-          >
-            <Pointer style={{ backgroundColor: "#ff6363" }}>
-              <TimeDisplay>{Math.floor(endTime)}s</TimeDisplay>
-            </Pointer>
-          </Draggable>
-        </TimelineContainer>
+        {/* Right Pointer */}
+        <Draggable
+          axis="x"
+          bounds={{ left: (currentTime / duration) * 700, right: 700 }} // Right pointer can only go back to left pointer position
+          position={{ x: (endTime / duration) * 700, y: 0 }}
+          onDrag={handleDragRight}
+        >
+     
+        </Draggable>
+      </TimelineContainer>
 
-        <PlayPauseButtonContainer>
-          <IconButton
-            onClick={togglePlayPause}
-            style={{ backgroundColor: "#6c63ff", color: "white" }}
-          >
-            {isPlaying ? <PauseIcon /> : <PlayArrowIcon />}
-          </IconButton>
-        </PlayPauseButtonContainer>
-      </VideoContainer>
-    </Container>
-  );
+      <PlayPauseButtonContainer>
+        <IconButton
+          onClick={togglePlayPause}
+          style={{ backgroundColor: "#6c63ff", color: "white" }}
+        >
+          {isPlaying ? <PauseIcon /> : <PlayArrowIcon />}
+        </IconButton>
+      </PlayPauseButtonContainer>
+    </VideoContainer>
+  </Container>
+);
 };
 
 export default PreviewScreen;
+
