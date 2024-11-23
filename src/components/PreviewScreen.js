@@ -1,16 +1,13 @@
 import React, { useEffect, useRef, useState } from "react";
 import styled from "styled-components";
-import { FFmpeg } from "@ffmpeg/ffmpeg";
 import { openDB } from "idb";
-import Slider from "rc-slider";
-import "rc-slider/assets/index.css";
 import videojs from "video.js";
 import "video.js/dist/video-js.css";
 import Draggable from "react-draggable";
-import { IconButton } from "@mui/material"; // Import IconButton from MUI
-import PlayArrowIcon from "@mui/icons-material/PlayArrow"; // Play icon
-import PauseIcon from "@mui/icons-material/Pause"; // Pause icon
-import downarrow from "../images/downarrow.png";
+import { IconButton } from "@mui/material";
+import PlayArrowIcon from "@mui/icons-material/PlayArrow";
+import PauseIcon from "@mui/icons-material/Pause";
+
 const Container = styled.div`
   display: flex;
   flex-direction: column;
@@ -86,28 +83,24 @@ const EndTime = styled.div`
   font-weight: bold;
 `;
 
-const TrimButton = styled.button`
-  background-color: #6c63ff;
-  color: white;
-  border: none;
-  padding: 10px 20px;
-  border-radius: 5px;
-  cursor: pointer;
-  margin-top: 20px;
-`;
-
 const PlayPauseButtonContainer = styled.div`
   position: absolute;
   margin-top: 20px;
   padding: 10px;
 `;
+const SelectedArea = styled.div`
+  position: absolute;
+  height: 100%;
+  background-color: rgba(108, 99, 255, 0.4); // Semi-transparent background for selected area
+  pointer-events: none;
+`;
 
 const PreviewScreen = () => {
   const [videoUrl, setVideoUrl] = useState("");
   const [duration, setDuration] = useState(0);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [loading, setLoading] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(false); // Track play/pause state
+  const [currentTime, setCurrentTime] = useState(0); // Left pointer time
+  const [endTime, setEndTime] = useState(10); // Right pointer time
+  const [isPlaying, setIsPlaying] = useState(false);
   const videoRef = useRef(null);
   const playerRef = useRef(null);
 
@@ -137,6 +130,7 @@ const PreviewScreen = () => {
       });
       playerRef.current.on("loadedmetadata", () => {
         setDuration(playerRef.current.duration());
+        setEndTime(playerRef.current.duration()); // Initialize end time
       });
       playerRef.current.on("timeupdate", () => {
         setCurrentTime(playerRef.current.currentTime());
@@ -144,61 +138,28 @@ const PreviewScreen = () => {
     }
   }, [videoUrl]);
 
-  const handleProcessVideo = async () => {
-    if (!videoUrl) return;
-
-    setLoading(true);
-
-    const ffmpeg = new FFmpeg();
-    try {
-      await ffmpeg.load();
-      console.log("FFmpeg loaded!");
-
-      const response = await fetch(videoUrl);
-      const videoBuffer = await response.arrayBuffer();
-      ffmpeg.FS("writeFile", "input.mp4", new Uint8Array(videoBuffer));
-
-      const startTime = 0;
-      const endTime = 10;
-      await ffmpeg.run(
-        "-i",
-        "input.mp4",
-        "-ss",
-        startTime.toString(),
-        "-t",
-        endTime.toString(),
-        "output.mp4"
-      );
-
-      const output = ffmpeg.FS("readFile", "output.mp4");
-      const outputBlob = new Blob([output.buffer], { type: "video/mp4" });
-      const outputUrl = URL.createObjectURL(outputBlob);
-
-      setVideoUrl(outputUrl);
-    } catch (error) {
-      console.error("Error processing video:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDrag = (e, data) => {
-    const newTime = (data.x / 700) * duration;
+  const handleDragLeft = (e, data) => {
+    const newTime = Math.min((data.x / 700) * duration, endTime); // Prevent crossing the right pointer
     setCurrentTime(newTime);
     if (playerRef.current) {
       playerRef.current.currentTime(newTime);
     }
-  };
-  const handleTimelineClick = (e) => {
-    // Calculate the time based on where the user clicked
-    const timelineWidth = e.currentTarget.offsetWidth;
-    const clickPosition =
-      e.clientX - e.currentTarget.getBoundingClientRect().left;
-    const newTime = (clickPosition / timelineWidth) * duration;
 
-    setCurrentTime(newTime);
-    if (playerRef.current) {
-      playerRef.current.currentTime(newTime);
+    // Check if the pointers meet
+    if (newTime >= endTime - 0.1) {
+      setIsPlaying(false);
+      playerRef.current.pause();
+    }
+  };
+
+  const handleDragRight = (e, data) => {
+    const newEndTime = Math.max((data.x / 700) * duration, currentTime); // Prevent crossing the left pointer
+    setEndTime(newEndTime);
+
+    // Check if the pointers meet
+    if (newEndTime <= currentTime + 0.1) {
+      setIsPlaying(false);
+      playerRef.current.pause();
     }
   };
 
@@ -209,7 +170,7 @@ const PreviewScreen = () => {
       } else {
         playerRef.current.play();
       }
-      setIsPlaying(!isPlaying); // Toggle play/pause state
+      setIsPlaying(!isPlaying);
     }
   };
 
@@ -226,24 +187,42 @@ const PreviewScreen = () => {
           <p>Loading video...</p>
         )}
 
-        <TimelineContainer onClick={handleTimelineClick}>
+        <TimelineContainer>
           <StartTime>0s</StartTime>
           <EndTime>{Math.floor(duration)}s</EndTime>
 
+                  <SelectedArea
+            style={{
+              left: `${(currentTime / duration) * 100}%`,
+              width: `${((endTime - currentTime) / duration) * 100}%`,
+            }}
+          />
+
+          {/* Left Pointer */}
           <Draggable
             axis="x"
             bounds="parent"
             position={{ x: (currentTime / duration) * 700, y: 0 }}
-            onDrag={handleDrag}
+            onDrag={handleDragLeft}
           >
             <Pointer>
-              {Math.floor(currentTime) > 0 &&
-              Math.floor(currentTime) < duration ? (
-                <TimeDisplay>{Math.floor(currentTime)}s</TimeDisplay>
-              ) : null}
+              <TimeDisplay>{Math.floor(currentTime)}s</TimeDisplay>
+            </Pointer>
+          </Draggable>
+
+          {/* Right Pointer */}
+          <Draggable
+            axis="x"
+            bounds="parent"
+            position={{ x: (endTime / duration) * 700, y: 0 }}
+            onDrag={handleDragRight}
+          >
+            <Pointer style={{ backgroundColor: "#ff6363" }}>
+              <TimeDisplay>{Math.floor(endTime)}s</TimeDisplay>
             </Pointer>
           </Draggable>
         </TimelineContainer>
+
         <PlayPauseButtonContainer>
           <IconButton
             onClick={togglePlayPause}
